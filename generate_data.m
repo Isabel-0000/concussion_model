@@ -13,21 +13,45 @@
 % Create normal distributions of 1000 samples of 
 %       impacts generated from experimental data
 % Returns: linear and rotational acceleration arrays
-function data = generate_data()
+function data = generate_data(n)
     g = 9.81; % [m/s^2]
+    lin_mean = 21.5;
+    lin_sd = 19.7;
+    x_ang_mean = 769.9;
+    y_ang_mean = 1382.2;
+    %x_ang_mean = 561;
+    %y_ang_mean = 625;
+    z_ang_mean = 0; % 1106
+   
     % Linear acceleration
-    pdfs(1) = makedist('Normal', 'mu', 21.5 * g, 'sigma', 19.7 * g); % [m/s^2] 
-    % Dominant rotation about the y-axis
-    pdfs(2) = makedist('Normal', 'mu', 1382.8, 'sigma', 1547.3); % [rad/s^2]
+    pdfs(1) = makedist('Normal', 'mu', lin_mean * g, 'sigma', lin_sd * g); % [m/s^2] 
+   
     % Duration of impact: chosen based upon wayne state tolerance curve
     % seen here: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2790598/
-    pdfs(3) = makedist('Normal', 'mu', 6*10^-3, 'sigma', 2*10^-3);
-    data.linear = abs(random(pdfs(1), 1, 1));
-    data.rotational = abs(random(pdfs(2), 1, 1));
-    data.duration = abs(random(pdfs(3), 1, 1));
+    %   - Chose a SD of 0 to minimize variability in data in order to get
+    %     the cleanest curve
+    pdfs(3) = makedist('Normal', 'mu', 6*10^-3, 'sigma', 0*10^-3);
     
-    data.alpha_of_t = head_acceleration_shape_function(data.rotational, data.duration); % time varying rotational acceleration
+    % Create data arrays from pdfs
+    data.linear = abs(random(pdfs(1), n, 1));
+    % For rotational acceleration:
+    %   - take pythagorean sum of mean angular accelerations given
+    %   - scale linear data by this sum divided by the mean linear
+    %     acceleration
+    data.rotational = data.linear.*sqrt(x_ang_mean^2 + y_ang_mean^2 + z_ang_mean^2)/lin_mean;
+    data.duration = abs(random(pdfs(3), n, 1));
     data.omega_p = peak_angular_velocity(data.rotational, data.duration);
+    data.rotational_x = data.linear.*x_ang_mean/lin_mean;
+    data.rotational_y = data.linear.*y_ang_mean/lin_mean;
+    data.rotational_z = data.linear.*z_ang_mean/lin_mean;
+    
+    % time varying rotational acceleration
+    data.alpha_of_t_x = head_acceleration_shape_function(data.rotational_x, data.duration); 
+    data.alpha_of_t_y = head_acceleration_shape_function(data.rotational_y, data.duration);
+    data.alpha_of_t_z = head_acceleration_shape_function(data.rotational_z, data.duration);
+    data.omega_p_x = peak_angular_velocity(data.rotational_x, data.duration);
+    data.omega_p_y = peak_angular_velocity(data.rotational_y, data.duration);
+    data.omega_p_z = peak_angular_velocity(data.rotational_z, data.duration);
 end
 
 % Create a head acceleration shape function based upon the shape given here:
@@ -53,14 +77,6 @@ function shape_fxn = head_acceleration_shape_function(peak_alpha, duration)
             shape_fxn(j,i) = y(i);
         end
         
-        %{
-        syms t;
-        shape_fxn = piecewise (0 <= t < d/2, (a/(d/2))*t, ...
-                        d/2 <= t < d, 2*a-(a*2/(d))*t, ...
-                        d <= t < d + 35/2*10^-3, d*a*.4296/(35/2*10^-3)-((a*.4286)/(35/2*10^-3))*t, ...
-                        d + 35/2*10^-3 <= t < d + 35*10^-3, ((a*.4286)/(35/2*10^-3))*t - 2*0.4296*a - d*0.4296*a/(35/2*10^-3), ...
-                        d + 35*10^-3 <= t <= d + 85*10^-3, 0);
-        %}
     end
 end    
 

@@ -13,13 +13,35 @@ function model_cp = model(data)
     % Assume rotation about y axis dominates (see generate_data)
     
     % Step 1: simplified human head FEA
-    model_cp = zeros(size(data.omega_p));
-    for i = 1:size(data.omega_p)
-        alpha = data.alpha_of_t(i,:);
-        omega_p = data.omega_p(i);
+    model_cp = zeros(length(data.omega_p), 1);
+    for i = 1:length(data.omega_p)
+        alpha_x = data.alpha_of_t_x(i,:);
+        alpha_y = data.alpha_of_t_y(i,:);
+        omega_p_x = data.omega_p_x(i);
+        omega_p_y = data.omega_p_y(i);
         duration = data.duration(i);
-        strain = simplified_hh_FEM(alpha, omega_p, duration);
-        nr_strain = strain_node_ranvier(strain, duration);
+        
+        params.a = 3.3;
+        params.b = 250;
+        params.c = -2.2;
+        params.d = 74800;
+        strain_x = simplified_hh_FEM(alpha_x, params, omega_p_x, duration);
+        params.a = -3.0;
+        params.b = -230;
+        params.c = 3.6;
+        params.d = -67320;
+        strain_y = simplified_hh_FEM(alpha_y, params, omega_p_y, duration);
+        
+        params.a = 2.7;
+        params.b = 150;
+        params.c = 0;
+        params.d = 59840;
+        strain_z = simplified_hh_FEM(alpha_y, params, omega_p_y, duration);
+        
+        nr_strain_x = strain_node_ranvier(strain_x, duration);
+        nr_strain_y  = strain_node_ranvier(strain_y, duration);
+        nr_strain_z  = strain_node_ranvier(strain_z, duration);
+        nr_strain = sqrt(nr_strain_x^2 + nr_strain_y^2 + nr_strain_z^2);
         delta_action_potential = axon_signaling(nr_strain);
         model_cp(i) = dose_response(delta_action_potential);
     end
@@ -27,23 +49,14 @@ function model_cp = model(data)
 end
 
 % Model 1: simplification of FEM of a head to find strain
-function strain = simplified_hh_FEM(alpha, omega_p, duration)
-    params.a = 3.3;
-    params.b = 250;
-    params.c = -2.2;
-    params.d = 74800;
+function strain = simplified_hh_FEM(alpha, params, omega_p, duration)
     
     t_final = duration + 85*10^-3;
     time_vector = linspace(0, t_final, 100);
     tspan = [0 t_final];
     y0 = [0 0];
     [t,y] = ode45(@(t, y) second_order_ode(t, y, alpha, omega_p, params, time_vector), tspan, y0);
-    % TODO send the whole array into the next function and use in dsolve,
-    % then find the max in the output after the system has been solved
     strain = y(:,1);
-    %str = interp1(linspace(0, t_final, 45), y, t);
-    %strain = str(:,1);
-    %strain = max(y(:,1));  % Find the maximum in the solution
 end
 
 function dydt = second_order_ode(t, y, alpha, omega_p, params, time_vector)
@@ -136,8 +149,12 @@ end
 function cp = dose_response(NIM)
     % Determined from curve fit of experimental data in this paper
     % https://academic.oup.com/milmed/article/183/suppl_1/339/4959982
-    w = log(NIM/(1-NIM));
-    x = 7.6182 + 2.4587*w;
-    cp = exp(x)/(1 + exp(x));
+    if(NIM == 1)
+        cp = 1;
+    else
+        w = log(NIM/(1-NIM));
+        x = 7.6182 + 2.4587*w;
+        cp = exp(x)/(1 + exp(x));
+    end
 end
     
